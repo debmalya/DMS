@@ -40,17 +40,17 @@ public class DisasterFeedConsumer {
 		ObjectMapper mapper = new ObjectMapper();
 		populateCountryMap(mapper);
 
-		if (System.currentTimeMillis() - lastCalledOn > TEN_MINUTES) {
+		if (System.currentTimeMillis() - lastCalledOn > TEN_MINUTES || disasterList.size() == 0) {
 			lastCalledOn = System.currentTimeMillis();
 			disasterList.clear();
 
 			String url = "https://reliefweb.int/disasters/rss.xml";
-			DisasterGeoJson disasterJeoJson = new DisasterGeoJson();
+			
 			try (XmlReader reader = new XmlReader(new URL(url))) {
 				SyndFeed feed = new SyndFeedInput().build(reader);
 				System.out.println(feed.getTitle());
 				for (SyndEntry entry : feed.getEntries()) {
-
+					DisasterGeoJson disasterJeoJson = new DisasterGeoJson();
 					disasterJeoJson.getProperties().put("date", entry.getPublishedDate().toString());
 					String title = entry.getTitle();
 					String country = "";
@@ -79,9 +79,14 @@ public class DisasterFeedConsumer {
 			}
 		}
 
-		int index = (int) Math.random() * 1000;
-		logger.log(Level.INFO, "SIZE :" + disasterList.size());
-		return mapper.writeValueAsString(index % disasterList.size());
+		int index = 0;
+		if (disasterList.size() > 0) {
+			index = ((int) (Math.random() * 1000)) % disasterList.size();
+		}
+		
+		DisasterGeoJson disaster = disasterList.get(index);
+		//logger.log(Level.INFO, "SIZE :" + disasterList.size() + " generated index :" + disaster);
+		return mapper.writeValueAsString(disaster);
 	}
 
 	private void populateCountryMap(ObjectMapper mapper) {
