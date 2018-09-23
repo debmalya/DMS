@@ -37,13 +37,21 @@
         crossOrigin: true,
         type: 'json'
       }, {
-        interval: 3 * 1000
+        interval: 5 * 1000
       })
       .addTo(map),
       marker;
+
     realtime.on('update', function () {
       map.fitBounds(realtime.getBounds(), {
         maxZoom: 3
+      });
+      markers = L.markerClusterGroup({
+        iconCreateFunction: function (cluster) {
+          return L.divIcon({
+            html: '<b>' + cluster.getChildCount() + '</b>'
+          });
+        }
       });
     });
     L
@@ -55,7 +63,7 @@
       geocoder.reverse(e.latlng, map.options.crs.scale(map.getZoom()),
         function (results) {
           var r = results[0];
-          console.log(r);
+
           if (r) {
             if (marker) {
               marker.setLatLng(r.center).setPopupContent(

@@ -29,7 +29,7 @@ public class DisasterFeedConsumer {
 
 	private Logger logger = Logger.getLogger("DisasterFeedConsumer");;
 	private Map<String, double[]> countryMap = new HashMap<>();
-	private static final long TEN_MINUTES = 1 * 60 * 1000;
+	private static final long TEN_MINUTES = 10 * 60 * 1000;
 
 	private long lastCalledOn = 0;
 	private List<DisasterGeoJson> disasterList = new ArrayList<>();
