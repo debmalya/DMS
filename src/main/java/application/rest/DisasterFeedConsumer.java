@@ -67,12 +67,21 @@ public class DisasterFeedConsumer {
 						geometry.setCoordinates(coordinates);
 						disasterJeoJson.setGeometry(geometry);
 					}
+					
 					disasterJeoJson.getProperties().put("description", entry.getTitle());
+					// status
+					String description = entry.getDescription().getValue();
+					int pos = description.indexOf("Status:");
+					if (pos>-1){
+						disasterJeoJson.getProperties().put("status", description.substring(pos));
+					}else{
+						disasterJeoJson.getProperties().put("status", "");
+					}
 					disasterJeoJson.getProperties().put("link", entry.getLink());
 					disasterList.add(disasterJeoJson);
 				}
 
-				logger.log(Level.INFO, "Done");
+//				logger.log(Level.INFO, "Done");
 
 			} catch (IOException ioe) {
 				logger.log(Level.SEVERE, ioe.getMessage(), ioe);
