@@ -33,6 +33,7 @@ public class DisasterFeedConsumer {
 
 	private long lastCalledOn = 0;
 	private List<DisasterGeoJson> disasterList = new ArrayList<>();
+	private static final String url = "https://reliefweb.int/disasters/rss.xml";
 
 	@RequestMapping("/disaster")
 	@ResponseBody
@@ -43,49 +44,7 @@ public class DisasterFeedConsumer {
 		if (System.currentTimeMillis() - lastCalledOn > TEN_MINUTES || disasterList.size() == 0) {
 			lastCalledOn = System.currentTimeMillis();
 			disasterList.clear();
-
-			String url = "https://reliefweb.int/disasters/rss.xml";
-			
-			try (XmlReader reader = new XmlReader(new URL(url))) {
-				SyndFeed feed = new SyndFeedInput().build(reader);
-				System.out.println(feed.getTitle());
-				for (SyndEntry entry : feed.getEntries()) {
-					DisasterGeoJson disasterJeoJson = new DisasterGeoJson();
-					disasterJeoJson.getProperties().put("date", entry.getPublishedDate().toString());
-					String title = entry.getTitle();
-					String country = "";
-					if (title != null && title.indexOf(":") > -1) {
-						country = title.substring(0, title.indexOf(":"));
-					}
-
-					double[] countryDetails = countryMap.get(country);
-					if (countryDetails != null) {
-						Geometry geometry = new Geometry();
-						double[] coordinates = new double[2];
-						coordinates[0] = countryDetails[0];
-						coordinates[1] = countryDetails[1];
-						geometry.setCoordinates(coordinates);
-						disasterJeoJson.setGeometry(geometry);
-					}
-					
-					disasterJeoJson.getProperties().put("description", entry.getTitle());
-					// status
-					String description = entry.getDescription().getValue();
-					int pos = description.indexOf("Status:");
-					if (pos>-1){
-						disasterJeoJson.getProperties().put("status", description.substring(pos));
-					}else{
-						disasterJeoJson.getProperties().put("status", "");
-					}
-					disasterJeoJson.getProperties().put("link", entry.getLink());
-					disasterList.add(disasterJeoJson);
-				}
-
-//				logger.log(Level.INFO, "Done");
-
-			} catch (IOException ioe) {
-				logger.log(Level.SEVERE, ioe.getMessage(), ioe);
-			}
+			createList(url);
 		}
 
 		int index = 0;
@@ -94,8 +53,50 @@ public class DisasterFeedConsumer {
 		}
 		
 		DisasterGeoJson disaster = disasterList.get(index);
-		//logger.log(Level.INFO, "SIZE :" + disasterList.size() + " generated index :" + disaster);
 		return mapper.writeValueAsString(disaster);
+	}
+
+	private void createList(String url) throws FeedException {
+		try (XmlReader reader = new XmlReader(new URL(url))) {
+			SyndFeed feed = new SyndFeedInput().build(reader);
+			System.out.println(feed.getTitle());
+			for (SyndEntry entry : feed.getEntries()) {
+				DisasterGeoJson disasterJeoJson = new DisasterGeoJson();
+				disasterJeoJson.getProperties().put("date", entry.getPublishedDate().toString());
+				String title = entry.getTitle();
+				String country = "";
+				if (title != null && title.indexOf(":") > -1) {
+					country = title.substring(0, title.indexOf(":"));
+				}
+
+				double[] countryDetails = countryMap.get(country);
+				if (countryDetails != null) {
+					Geometry geometry = new Geometry();
+					double[] coordinates = new double[2];
+					coordinates[0] = countryDetails[0];
+					coordinates[1] = countryDetails[1];
+					geometry.setCoordinates(coordinates);
+					disasterJeoJson.setGeometry(geometry);
+				}
+				
+				disasterJeoJson.getProperties().put("description", entry.getTitle());
+				// status
+				String description = entry.getDescription().getValue();
+				int pos = description.indexOf("Status:");
+				if (pos>-1){
+					disasterJeoJson.getProperties().put("status", description.substring(pos));
+				}else{
+					disasterJeoJson.getProperties().put("status", "");
+				}
+				disasterJeoJson.getProperties().put("link", entry.getLink());
+				disasterList.add(disasterJeoJson);
+			}
+
+//				logger.log(Level.INFO, "Done");
+
+		} catch (IOException ioe) {
+			logger.log(Level.SEVERE, ioe.getMessage(), ioe);
+		}
 	}
 
 	private void populateCountryMap(ObjectMapper mapper) {
