@@ -3,7 +3,7 @@ package application.model;
 import java.util.HashMap;
 import java.util.Map;
 
-public class DisasterGeoJson {
+public class Feature {
 	private String type = "Feature";
 	public String getType() {
 		return type;

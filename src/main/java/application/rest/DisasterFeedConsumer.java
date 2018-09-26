@@ -9,7 +9,9 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -21,7 +23,8 @@ import com.rometools.rome.io.FeedException;
 import com.rometools.rome.io.SyndFeedInput;
 import com.rometools.rome.io.XmlReader;
 
-import application.model.DisasterGeoJson;
+import application.model.Feature;
+import application.model.FeatureCollection;
 import application.model.Geometry;
 
 @RestController
@@ -29,77 +32,297 @@ public class DisasterFeedConsumer {
 
 	private Logger logger = Logger.getLogger("DisasterFeedConsumer");;
 	private Map<String, double[]> countryMap = new HashMap<>();
-	private static final long TEN_MINUTES = 10 * 60 * 1000;
+	private static final long INTERVAL = 5 * 60 * 1000;
 
 	private long lastCalledOn = 0;
-	private List<DisasterGeoJson> disasterList = new ArrayList<>();
+
 	private static final String url = "https://reliefweb.int/disasters/rss.xml";
+	private static final String jobUrl = "https://reliefweb.int/jobs/rss.xml";
+	private static final String updateUrl = "https://reliefweb.int/updates/rss.xml";
+	private static final String trainingUrl = "https://reliefweb.int/training/rss.xml";
+
+	/**
+	 * This map will keep url ( key ) and JSON string as value. All JSON string are
+	 * of type FeatureCollection.
+	 */
+	private static Map<String, String> urlResultMap = new HashMap<>();
+
+	/**
+	 * The map will keep url ( key ) and timestamp when it is called.
+	 */
+	private static Map<String, Long> urlTimestampMap = new HashMap<>();
 
 	@RequestMapping("/disaster")
 	@ResponseBody
 	public String getFeed() throws FeedException, JsonProcessingException {
 		ObjectMapper mapper = new ObjectMapper();
-		populateCountryMap(mapper);
+		populateCountryMap();
+		List<Feature> disasterList = new ArrayList<>();
+		// if (System.currentTimeMillis() - lastCalledOn > TEN_MINUTES) {
+		lastCalledOn = System.currentTimeMillis();
+		disasterList = createList(url);
+		// }
 
-		if (System.currentTimeMillis() - lastCalledOn > TEN_MINUTES || disasterList.size() == 0) {
+		int index = 0;
+		if (!disasterList.isEmpty()) {
+			index = ((int) (Math.random() * 1000)) % disasterList.size();
+		}
+
+		Feature disaster = disasterList.get(index);
+		return mapper.writeValueAsString(disaster);
+
+	}
+
+	/**
+	 * Get all the disaster retrieved by the passed URL. First check whether it is
+	 * available in the cache. If not available in the cache then call the URL to
+	 * get the list.
+	 * 
+	 * If available check timestamp, if it is called before 10 minutes call again.
+	 * 
+	 * @return
+	 * @throws FeedException
+	 * @throws JsonProcessingException
+	 */
+
+	@RequestMapping("/disasters")
+	@ResponseBody
+	public String getFeeds() throws FeedException, JsonProcessingException {
+		return extract(url);
+	}
+	
+	@RequestMapping("/updates")
+	@ResponseBody
+	public String updates() throws FeedException, JsonProcessingException {
+		return extract(updateUrl);
+	}
+
+	@RequestMapping("/jobs")
+	@ResponseBody
+	public String jobs() throws FeedException, JsonProcessingException {
+		return extract(jobUrl);
+	}
+	
+	@RequestMapping("/trainings")
+	@ResponseBody
+	public String tranings() throws FeedException, JsonProcessingException {
+		return extract(trainingUrl);
+	}
+
+	
+	/**
+	 * 
+	 * @param passedURL
+	 * @return
+	 * @throws FeedException
+	 * @throws JsonProcessingException
+	 */
+	private String extract(String passedURL) throws FeedException, JsonProcessingException {
+		populateCountryMap();
+		String result = urlResultMap.get(passedURL);
+		Long timestamp = urlTimestampMap.get(passedURL);
+		if (timestamp == null) {
+			timestamp = 0L;
+		}
+		if (result == null || System.currentTimeMillis() - timestamp > INTERVAL) {
+			result = createFeatures(passedURL);
+		}
+
+		return result;
+	}
+
+
+
+	/**
+	 * This is for search particular type of disaster (e.g. earthquake, flood)
+	 * 
+	 * @param query
+	 * @return JSON formatted string.
+	 * @throws FeedException
+	 * @throws JsonProcessingException
+	 */
+	@GetMapping("/sdisaster")
+	@ResponseBody
+	public String discover(@RequestParam String query) throws FeedException, JsonProcessingException {
+		ObjectMapper mapper = new ObjectMapper();
+		populateCountryMap();
+		List<Feature> disasterList = new ArrayList<>();
+		if (System.currentTimeMillis() - lastCalledOn > INTERVAL || disasterList.size() == 0) {
 			lastCalledOn = System.currentTimeMillis();
 			disasterList.clear();
-			createList(url);
+			disasterList = createList(url + "?search=" + query);
 		}
 
 		int index = 0;
 		if (disasterList.size() > 0) {
 			index = ((int) (Math.random() * 1000)) % disasterList.size();
 		}
-		
-		DisasterGeoJson disaster = disasterList.get(index);
+
+		Feature disaster = disasterList.get(index);
 		return mapper.writeValueAsString(disaster);
 	}
 
-	private void createList(String url) throws FeedException {
+	/**
+	 * To prepare geojson list for the passed URL.
+	 * 
+	 * @param url
+	 * @throws FeedException
+	 */
+	private List<Feature> createList(String url) throws FeedException {
+//		logger.log(Level.INFO, url);
+		List<Feature> disasterList = new ArrayList<>();
 		try (XmlReader reader = new XmlReader(new URL(url))) {
 			SyndFeed feed = new SyndFeedInput().build(reader);
-			System.out.println(feed.getTitle());
+
 			for (SyndEntry entry : feed.getEntries()) {
-				DisasterGeoJson disasterJeoJson = new DisasterGeoJson();
-				disasterJeoJson.getProperties().put("date", entry.getPublishedDate().toString());
+				Feature disasterJeoJson = new Feature();
+				String dateTime = entry.getPublishedDate().toString();
+				// Tue Jul 03 08:00:00 SGT 2018
+//				logger.log(Level.INFO, "~~~~~~~~~~ :" + dateTime);
+				disasterJeoJson.getProperties().put("date", dateTime);
+				// disasterJeoJson.getProperties().put("time", dateTime);
+				disasterJeoJson.getProperties().put("mag", "NA");
 				String title = entry.getTitle();
 				String country = "";
 				if (title != null && title.indexOf(":") > -1) {
 					country = title.substring(0, title.indexOf(":"));
+					disasterJeoJson.getProperties().put("place", country);
+					if ("United Republic of Tanzania".equalsIgnoreCase(country)) {
+						country = "Tanzania";
+					} else if ("".equalsIgnoreCase(country)) {
+
+					}
 				}
 
+				double[] coordinates = new double[2];
 				double[] countryDetails = countryMap.get(country);
+				Geometry geometry = new Geometry();
+
 				if (countryDetails != null) {
-					Geometry geometry = new Geometry();
-					double[] coordinates = new double[2];
 					coordinates[0] = countryDetails[0];
 					coordinates[1] = countryDetails[1];
-					geometry.setCoordinates(coordinates);
-					disasterJeoJson.setGeometry(geometry);
+				} else {
+					logger.log(Level.SEVERE, "'" + country + "' has no mapping.");
 				}
-				
-				disasterJeoJson.getProperties().put("description", entry.getTitle());
-				// status
+
+				geometry.setCoordinates(coordinates);
+				disasterJeoJson.setGeometry(geometry);
+				disasterJeoJson.getProperties().put("title", entry.getTitle());
+				disasterJeoJson.getProperties().put("link", entry.getLink());
+				disasterJeoJson.getProperties().put("url", entry.getLink());
+
 				String description = entry.getDescription().getValue();
 				int pos = description.indexOf("Status:");
-				if (pos>-1){
-					disasterJeoJson.getProperties().put("status", description.substring(pos));
-				}else{
+				if (pos > -1) {
+					pos += 7;
+					String status = description.substring(pos);
+					disasterJeoJson.getProperties().put("status", status);
+//					logger.log(Level.INFO, "status :" + status);
+				} else {
 					disasterJeoJson.getProperties().put("status", "");
 				}
-				disasterJeoJson.getProperties().put("link", entry.getLink());
+
+				disasterJeoJson.getProperties().put("description", entry.getDescription().getValue());
 				disasterList.add(disasterJeoJson);
+
 			}
 
-//				logger.log(Level.INFO, "Done");
+			// logger.log(Level.INFO, "Done");
 
 		} catch (IOException ioe) {
 			logger.log(Level.SEVERE, ioe.getMessage(), ioe);
 		}
+		return disasterList;
 	}
 
-	private void populateCountryMap(ObjectMapper mapper) {
+	/**
+	 * To prepare geojson list for the passed URL.
+	 * 
+	 * @param url
+	 * @throws FeedException
+	 * @throws JsonProcessingException
+	 */
+	private String createFeatures(String url) throws FeedException, JsonProcessingException {
+		logger.log(Level.INFO, url);
+
+		FeatureCollection featureCollection = new FeatureCollection();
+		// metadata population
+		featureCollection.getMetadata().put("generated", String.valueOf(System.currentTimeMillis()));
+		featureCollection.getMetadata().put("url", url);
+		featureCollection.getMetadata().put("title", "Call for code : Debmalya Jash");
+		featureCollection.getMetadata().put("status", "200");
+		featureCollection.getMetadata().put("api", "0.0.1");
+		// end of metadata population
+
+		try (XmlReader reader = new XmlReader(new URL(url))) {
+			SyndFeed feed = new SyndFeedInput().build(reader);
+
+			featureCollection.getMetadata().put("count", String.valueOf(feed.getEntries().size()));
+
+			for (SyndEntry entry : feed.getEntries()) {
+				Feature disasterJeoJson = new Feature();
+				String dateTime = entry.getPublishedDate().toString();
+				
+				disasterJeoJson.getProperties().put("date", dateTime);
+				disasterJeoJson.getProperties().put("mag", "NA");
+				String title = entry.getTitle();
+				String country = "";
+				if (title != null && title.indexOf(":") > -1) {
+					country = title.substring(0, title.indexOf(":"));
+					disasterJeoJson.getProperties().put("place", country);
+				}
+
+				double[] coordinates = new double[2];
+				double[] countryDetails = countryMap.get(country);
+				Geometry geometry = new Geometry();
+
+				if (countryDetails != null) {
+					coordinates[0] = countryDetails[0];
+					coordinates[1] = countryDetails[1];
+				} else {
+					logger.log(Level.SEVERE, "'" + country + "' has no mapping.");
+				}
+
+				geometry.setCoordinates(coordinates);
+				disasterJeoJson.setGeometry(geometry);
+				disasterJeoJson.getProperties().put("title", entry.getTitle());
+				disasterJeoJson.getProperties().put("link", entry.getLink());
+				disasterJeoJson.getProperties().put("url", entry.getLink());
+
+				String description = entry.getDescription().getValue();
+				int pos = description.indexOf("Status:");
+				if (pos > -1) {
+					pos += 7;
+					String status = description.substring(pos);
+					disasterJeoJson.getProperties().put("status", status);
+					// logger.log(Level.INFO, "status :" + status);
+				} else {
+					disasterJeoJson.getProperties().put("status", "");
+				}
+
+				featureCollection.getFeatures().add(disasterJeoJson);
+
+			}
+
+			// logger.log(Level.INFO, "Done");
+
+		} catch (IOException ioe) {
+			logger.log(Level.SEVERE, ioe.getMessage(), ioe);
+		}
+
+		
+		urlTimestampMap.put(url, System.currentTimeMillis());
+		ObjectMapper mapper = new ObjectMapper();
+		String resultString = mapper.writeValueAsString(featureCollection);
+		urlResultMap.put(url, resultString);
+		return resultString;
+	}
+
+	/**
+	 * 
+	 * @param mapper
+	 */
+	private void populateCountryMap() {
 		if (countryMap.isEmpty()) {
 			countryMap.put("Afghanistan", new double[] { 67.709953, 33.93911 });
 			countryMap.put("Albania", new double[] { 20.168331, 41.153332 });
@@ -149,6 +372,8 @@ public class DisasterFeedConsumer {
 			countryMap.put("Djibouti", new double[] { 42.590275, 11.825138 });
 			countryMap.put("Dominica", new double[] { -61.37097600000001, 15.414999 });
 			countryMap.put("Dominican Republic", new double[] { -70.162651, 18.735693 });
+			countryMap.put("Democratic Republic of the Congo", new double[] { 21.7587, -4.0383 });
+			countryMap.put("Congo", new double[] { 21.7587, -4.0383 });
 			countryMap.put("Ecuador", new double[] { -78.18340599999999, -1.831239 });
 			countryMap.put("Egypt", new double[] { 30.802498, 26.820553 });
 			countryMap.put("El Salvador", new double[] { -88.89653, 13.794185 });
@@ -191,6 +416,7 @@ public class DisasterFeedConsumer {
 			countryMap.put("Kuwait", new double[] { 47.481766, 29.31166 });
 			countryMap.put("Kyrgyzstan", new double[] { 74.766098, 41.20438 });
 			countryMap.put("Laos", new double[] { 102.495496, 19.85627 });
+			countryMap.put("Lao People's Democratic Republic (the)", new double[] { 102.495496, 19.85627 });
 			countryMap.put("Latvia", new double[] { 24.603189, 56.879635 });
 			countryMap.put("Lebanon", new double[] { 35.862285, 33.854721 });
 			countryMap.put("Lesotho", new double[] { 28.233608, -29.609988 });
@@ -218,6 +444,7 @@ public class DisasterFeedConsumer {
 			countryMap.put("Morocco", new double[] { -7.092619999999999, 31.791702 });
 			countryMap.put("Mozambique", new double[] { 35.529562, -18.665695 });
 			countryMap.put("Myanmar (Burma)", new double[] { 95.956223, 21.913965 });
+			countryMap.put("Myanmar", new double[] { 95.956223, 21.913965 });
 			countryMap.put("Namibia", new double[] { 18.49041, -22.95764 });
 			countryMap.put("Nauru", new double[] { 166.931503, -0.522778 });
 			countryMap.put("Nepal", new double[] { 84.12400799999999, 28.394857 });
@@ -226,8 +453,11 @@ public class DisasterFeedConsumer {
 			countryMap.put("Nicaragua", new double[] { -85.207229, 12.865416 });
 			countryMap.put("Niger", new double[] { 8.081666, 17.607789 });
 			countryMap.put("Nigeria", new double[] { 8.675277, 9.081999 });
+			countryMap.put("Democratic People's Republic of Korea", new double[] { 127.510093, 40.339852 });
 			countryMap.put("North Korea", new double[] { 127.510093, 40.339852 });
 			countryMap.put("Norway", new double[] { 8.468945999999999, 60.47202399999999 });
+			countryMap.put("Northern Mariana Islands (The United States of America)",
+					new double[] { 145.70652, 15.10639 });
 			countryMap.put("Oman", new double[] { 55.923255, 21.512583 });
 			countryMap.put("Pakistan", new double[] { 69.34511599999999, 30.375321 });
 			countryMap.put("Palau", new double[] { 134.58252, 7.514979999999999 });
@@ -270,9 +500,11 @@ public class DisasterFeedConsumer {
 			countryMap.put("Sweden", new double[] { 18.643501, 60.12816100000001 });
 			countryMap.put("Switzerland", new double[] { 8.227511999999999, 46.818188 });
 			countryMap.put("Syria", new double[] { 38.996815, 34.80207499999999 });
+			countryMap.put("Syrian Arab Republic", new double[] { 38.996815, 34.80207499999999 });
 			countryMap.put("Taiwan", new double[] { 120.960515, 23.69781 });
 			countryMap.put("Tajikistan", new double[] { 71.276093, 38.861034 });
 			countryMap.put("Tanzania", new double[] { 34.888822, -6.369028 });
+			countryMap.put("United Republic of Tanzania", new double[] { 34.888822, -6.369028 });
 			countryMap.put("Thailand", new double[] { 100.992541, 15.870032 });
 			countryMap.put("Timor-Leste", new double[] { 125.727539, -8.874217 });
 			countryMap.put("Togo", new double[] { 0.824782, 8.619543 });
@@ -286,6 +518,7 @@ public class DisasterFeedConsumer {
 			countryMap.put("Ukraine", new double[] { 31.16558, 48.379433 });
 			countryMap.put("United Arab Emirates", new double[] { 53.847818, 23.424076 });
 			countryMap.put("United Kingdom", new double[] { -3.435973, 55.378051 });
+			countryMap.put("United Kingdom of Great Britain and Northern Ireland", new double[] { -3.435973, 55.378051 });
 			countryMap.put("United States of America", new double[] { -95.712891, 37.09024 });
 			countryMap.put("Uruguay", new double[] { -55.765835, -32.522779 });
 			countryMap.put("Uzbekistan", new double[] { 64.585262, 41.377491 });
@@ -293,9 +526,12 @@ public class DisasterFeedConsumer {
 			countryMap.put("Vatican City", new double[] { 12.453389, 41.902916 });
 			countryMap.put("Venezuela", new double[] { -66.58973, 6.42375 });
 			countryMap.put("Vietnam", new double[] { 108.277199, 14.058324 });
+			countryMap.put("Viet Nam",new double[] { 108.277199, 14.058324 });
 			countryMap.put("Yemen", new double[] { 48.516388, 15.552727 });
 			countryMap.put("Zambia", new double[] { 27.849332, -13.133897 });
 			countryMap.put("Zimbabwe", new double[] { 29.154857, -19.015438 });
+			countryMap.put("World", new double[] { 0, 0 });
+			countryMap.put("", new double[] { 0, 0 });
 
 		}
 

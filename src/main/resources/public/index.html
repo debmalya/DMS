@@ -27,70 +27,7 @@
 <body>
   <div id="description"></div>
   <div id="mapid"></div>
-  <script>
-    var map = L.map('mapid').setView([0, 0], 2),
-      geocoder = L.Control.Geocoder
-      .nominatim(),
-
-      control = L.Control.geocoder({
-        geocoder: geocoder
-      }),
-      realtime = L.realtime({
-        url: '/disaster',
-        crossOrigin: true,
-        type: 'json'
-      }, {
-        interval: 5 * 1000,
-
-        getFeatureId: function (f) {
-          return f.properties.link;
-        },
-        onEachFeature(f, l) {
-          l.bindPopup(function () {
-            return '<h6>' + f.properties.description + '</h6>' +
-              '<h6><strong>' + f.properties.status + '</strong></h6>' +
-              '<p>' + f.properties.date +
-              '<p><a href="' + f.properties.link + '">More information</a></p>';
-          });
-        }
-      })
-      .addTo(map),
-      marker;
-
-    realtime.on('update', function () {
-      map.fitBounds(realtime.getBounds(), {
-        maxZoom: 3
-      });
-      markers = L.markerClusterGroup({
-        iconCreateFunction: function (cluster) {
-          return L.divIcon({
-            html: '<b>' + cluster.getChildCount() + '</b>'
-          });
-        }
-      });
-    });
-    L
-      .tileLayer(
-        'http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-    map.on('click', function (e) {
-      geocoder.reverse(e.latlng, map.options.crs.scale(map.getZoom()),
-        function (results) {
-          var r = results[0];
-
-          if (r) {
-            if (marker) {
-              marker.setLatLng(r.center).setPopupContent(
-                r.html || r.name).openPopup();
-            } else {
-              marker = L.marker(r.center).bindPopup(r.name)
-                .addTo(map).openPopup();
-            }
-          }
-        })
-    })
-  </script>
+  <script type="text/javascript" src="/dist/disaster.js"></script>
 </body>
 
 </html>
