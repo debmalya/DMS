@@ -243,7 +243,7 @@ public class DisasterFeedConsumer {
 	 * @throws JsonProcessingException
 	 */
 	private String createFeatures(String url) throws FeedException, JsonProcessingException {
-		logger.log(Level.INFO, url);
+//		logger.log(Level.INFO, url);
 
 		FeatureCollection featureCollection = new FeatureCollection();
 		// metadata population
@@ -384,6 +384,7 @@ public class DisasterFeedConsumer {
 			countryMap.put("Fiji", new double[] { 178.065032, -17.713371 });
 			countryMap.put("Finland", new double[] { 25.748151, 61.92410999999999 });
 			countryMap.put("France", new double[] { 2.213749, 46.227638 });
+			countryMap.put("Réunion (France)",new double[] {55.5364,21.1151});
 			countryMap.put("Gabon", new double[] { 11.609444, -0.803689 });
 			countryMap.put("Gambia", new double[] { -15.310139, 13.443182 });
 			countryMap.put("Georgia", new double[] { 43.35689199999999, 42.315407 });
@@ -402,6 +403,7 @@ public class DisasterFeedConsumer {
 			countryMap.put("India", new double[] { 78.96288, 20.593684 });
 			countryMap.put("Indonesia", new double[] { 113.921327, -0.789275 });
 			countryMap.put("Iran", new double[] { 53.688046, 32.427908 });
+			countryMap.put("Iran (Islamic Republic of)",new double[] { 53.688046, 32.427908 });
 			countryMap.put("Iraq", new double[] { 43.679291, 33.223191 });
 			countryMap.put("Ireland", new double[] { -8.24389, 53.41291 });
 			countryMap.put("Israel", new double[] { 34.851612, 31.046051 });
@@ -462,6 +464,7 @@ public class DisasterFeedConsumer {
 			countryMap.put("Pakistan", new double[] { 69.34511599999999, 30.375321 });
 			countryMap.put("Palau", new double[] { 134.58252, 7.514979999999999 });
 			countryMap.put("Palestine", new double[] { 35.233154, 31.952162 });
+			countryMap.put("occupied Palestinian territory",new double[] {35.1999992,31.8833298 });
 			countryMap.put("Panama", new double[] { -80.782127, 8.537981 });
 			countryMap.put("Papua New Guinea", new double[] { 143.95555, -6.314992999999999 });
 			countryMap.put("Paraguay", new double[] { -58.443832, -23.442503 });
@@ -497,6 +500,7 @@ public class DisasterFeedConsumer {
 			countryMap.put("Sudan", new double[] { 30.217636, 12.862807 });
 			countryMap.put("Suriname", new double[] { -56.027783, 3.919305 });
 			countryMap.put("Swaziland", new double[] { 31.465866, -26.522503 });
+			countryMap.put("Eswatini", new double[] { 31.465866, -26.522503 });
 			countryMap.put("Sweden", new double[] { 18.643501, 60.12816100000001 });
 			countryMap.put("Switzerland", new double[] { 8.227511999999999, 46.818188 });
 			countryMap.put("Syria", new double[] { 38.996815, 34.80207499999999 });
